@@ -1,32 +1,36 @@
 #include <iostream>
 #include <IOKit/IOKitLib.h>
+#include <CoreFoundation/CoreFoundation.h>
+#define kIOUSBDeviceClassName "IOUSBDevice"
 
 int main() {
+    // Create a matching dictionary to search for USB devices
     CFMutableDictionaryRef matchingDict = IOServiceMatching(kIOUSBDeviceClassName);
-    io_iterator_t iterator;
-    kern_return_t kr = IOServiceGetMatchingServices(kIOMasterPortDefault, matchingDict, &iterator);
-    if (kr != KERN_SUCCESS) {
-        std::cerr << "Error: IOServiceGetMatchingServices()" << std::endl;
+    if (!matchingDict) {
+        std::cerr << "IOServiceMatching returned NULL" << std::endl;
         return 1;
     }
 
+    // Get an iterator for the matching devices
+    io_iterator_t iterator;
+    if (IOServiceGetMatchingServices(kIOMainPortDefault, matchingDict, &iterator) != KERN_SUCCESS) {
+        std::cerr << "IOServiceGetMatchingServices returned an error" << std::endl;
+        return 1;
+    }
+
+    // Iterate over the devices
     io_service_t device;
     while ((device = IOIteratorNext(iterator))) {
-        CFStringRef deviceName;
-        kr = IORegistryEntryCreateCFProperty(device, CFSTR(kUSBProductString), kCFAllocatorDefault, 0, &deviceName);
-        if (kr != KERN_SUCCESS) {
-            std::cerr << "Error: IORegistryEntryCreateCFProperty()" << std::endl;
-            IOObjectRelease(device);
-            continue;
+        // Get the product name of the device
+        CFStringRef productName = static_cast<CFStringRef>(IORegistryEntryCreateCFProperty(device, CFSTR("USB Product Name"), kCFAllocatorDefault, 0));
+        if (productName) {
+            std::cout << "Product Name: " << CFStringGetCStringPtr(productName, kCFStringEncodingUTF8) << std::endl;
+            CFRelease(productName);
         }
 
-        char deviceNameCStr[256];
-        CFStringGetCString(deviceName, deviceNameCStr, sizeof(deviceNameCStr), kCFStringEncodingASCII);
-        std::cout << "Device name: " << deviceNameCStr << std::endl;
-
-        CFRelease(deviceName);
+        // Release the device
         IOObjectRelease(device);
     }
-    IOObjectRelease(iterator);
+
     return 0;
 }
